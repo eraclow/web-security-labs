@@ -26,10 +26,13 @@ WHERE category = 'Gifts' AND released = 1;
 
  - Comment out the rest of the query
 
-This how We bypass the released=1 filter and reveal the hidden data.
+This is how We bypass the released=1 filter and reveal the hidden data.
 
 ### Example request
 
 The final injected request looked like:
 
+```
 ?category=’ OR 1=1 --
+
+```
