@@ -15,7 +15,8 @@ The application uses a query similar to:
 
 ```sql
 SELECT * FROM products
-WHERE category = 'Gifts' AND released = 1; ...
+WHERE category = 'Gifts' AND released = 1;
+```
 
 ### Logic
 
