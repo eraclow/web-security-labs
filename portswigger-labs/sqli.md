@@ -281,3 +281,75 @@ Successfully retrieved user credentials and logged in as the administrator.
  - Restrict database metadata exposure
 
 
+ ## LAB 6 -- Blind SQL Injection with Conditional Responses
+ 
+ ## Challenge Objective
+
+The goal of this lab is to retrieve the administrator password from the users table. The application uses a tracking cookie for analytics and performs a SQL query containing the value of the submitted cookie.
+
+The application's response is "Boolean-based," meaning it only indicates whether the query returned any results by displaying a "Welcome back!" message on the page.
+
+## Tools Used
+
+ - Burp Suite Community Edition (Interception & Intruder)
+
+ - SQL Syntax Knowledge (PostgreSQL/MySQL)
+
+
+## Methodology
+
+## Step 1 - Identifying the Vulnerability (Fingerprinting)
+
+By injecting a single quote (') into the TrackingId cookie, I observed that the "Welcome back!" message disappeared, indicating a potential SQL syntax error or a false condition.
+
+To verify the injection, I used logical operators:
+
+ - True Condition: TrackingId=xyz' AND '1'='1 -> "Welcome back!" is visible.
+
+ - False Condition: TrackingId=xyz' AND '1'='2 -> "Welcome back!" is hidden.
+
+This confirmed a Boolean-based Blind SQL Injection vulnerability.
+
+## Step 2 - Information Gathering
+
+The lab provided the table name (users) and the column names (username, password). My target was to extract the password for the user **administrator**.
+
+## Step 3 - Exploitation Strategy
+
+Since the database does not return data directly, I used a subquery to guess the password character by character.
+
+The Core Payload:
+
+```sql
+' AND (SELECT SUBSTRING(password,1,1) FROM users WHERE username='administrator')='a'--
+```
+
+Logic: If the first character of the password is 'a', the entire query evaluates to TRUE, and the server returns the "Welcome back!" message.
+
+## Step 4 - Automating with Burp Suite Intruder
+
+To avoid manual guessing, I used Burp Intruder:
+
+    Attack Type: Sniper (or Cluster Bomb for full automation).
+
+    Payload Positions: Marked the character index and the character itself.
+
+        ...SUBSTRING(password,§1§,1)...='§a§'
+
+    Grep - Match: Configured a rule to look for the string "Welcome back!" in the responses.
+
+    Analysis: I identified the correct characters by filtering the results where the "Welcome back!" match was found (or by observing a different response length).
+
+## Final Payload Example
+
+To find the 2nd character of the password:
+
+```
+Cookie: TrackingId=tStayyFx4UAgNeIF' AND (SELECT SUBSTRING(password,2,1) FROM users WHERE username='administrator')='z'--
+```
+
+## Conclusion
+
+After iterating through all characters, I successfully reconstructed the administrator password and gained full access to the account. This lab demonstrates how even subtle differences in server responses can lead to full database compromise.
+
+
