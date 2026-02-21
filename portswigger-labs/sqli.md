@@ -427,4 +427,212 @@ jxvruf3bbgluaby6rp9o
  - Precision: The trailing ' at the end of the payload is crucial to balance the SQL syntax and avoid generic syntax errors that could mislead the results.
 
 
+## SQL Injection via HTTP Error Messages (PostgreSQL) - Lab Solution
+
+## Objective
+
+Exploit a SQL Injection vulnerability within the TrackingId cookie to exfiltrate the administrator password through database error messages (Error-based SQLi).
+
+## Tools Used
+
+Burp Suite (Repeater & Proxy)
+
+PostgreSQL Syntax (Identified via fingerprinting)
+
+## Discovery & Analysis
+
+Since there were no visible query parameters in the URL, the investigation focused on HTTP headers and cookies.
+
+ - Entry Point: Adding a single quote (') to the TrackingId cookie triggered a server-side error.
+
+ - Database Fingerprinting: Initial attempts using MySQL-specific functions (like extractvalue) failed. However, the error message returned Position: 56, which is a classic signature of a PostgreSQL database.
+
+## Exploitation Process
+
+## 1. Bypassing the Character Limit (Truncation)
+The target application imposes a character limit on cookie values. Long payloads were being truncated, resulting in Unterminated string literal errors. To fix this, I had to optimize the payload for length.
+
+## 2. Crafting the Error-Based Payload
+To exfiltrate data, I used the CAST function to force a data type mismatch. By trying to cast the password (a string) into an integer, the database is forced to display the string in the error message.
+
+## Final Optimized Payload:
+
+```sql
+' AND 1=CAST((SELECT password FROM users LIMIT 1) AS INT)--
+```
+
+## 3. Payload Breakdown
+
+ - **':** Closes the original string in the tracking query.
+
+ - **AND 1=CAST(...)**: Forces the DB to evaluate the CAST operation.
+
+ - **(SELECT password FROM users LIMIT 1)**: Fetches the password of the first user in the table.
+
+ - **AS INT**: Attempts to convert the retrieved password into an integer.
+
+ - **--**:Comments out the rest of the original SQL query to prevent syntax errors.
+
+## Results
+
+Upon sending the request, the server responded with a detailed error:
+```
+ERROR: invalid input syntax for integer: "THE_EXTRACTED_PASSWORD"
+```
+
+The administrator password was successfully retrieved from this message, allowing for a full account compromise.
+
+## Key Takeaways
+
+ - Efficiency: Using LIMIT 1 instead of a WHERE clause saved critical characters to avoid truncation.
+
+ - Error Analysis: Verbose error messages are a goldmine for attackers; they provide direct feedback from the database engine.
+
+ - URL Encoding: Always URL-encode your payload (Ctrl+U in Burp) to ensure special characters like +, &, and # are handled correctly by the server.
+
+
+## Blind SQL Injection with Time Delays (PostgreSQL) - Lab Solution
+
+## Objective
+
+Exploit a blind SQL injection vulnerability where the application does not return any results or error messages. The goal is to trigger a conditional time delay of 10 seconds to confirm the vulnerability.
+
+## Tools Used
+
+Burp Suite (Repeater)
+
+PostgreSQL (Time-based payload syntax)
+
+## Discovery & Analysis
+
+In this scenario, the application performs a SQL query using the TrackingId cookie. However:
+
+ - It does not return the results of the query.
+
+ - It does not respond differently based on whether the query returns rows or causes an error.
+
+ - The Key: Since the query is executed synchronously, we can infer information by triggering Time Delays.
+
+## Exploitation Process
+
+## 1. Identifying the Database
+By attempting different sleep functions, I confirmed the backend is PostgreSQL using the pg_sleep() function.
+
+## 2. Crafting the Time-Based Payload
+To trigger a delay based on a condition, I used a CASE statement. This allows us to tell the database: "If this condition is true, wait for 10 seconds; otherwise, proceed normally."
+
+## The Payload:
+
+```sql
+' || (SELECT CASE WHEN (1=1) THEN pg_sleep(10) ELSE pg_sleep(0) END) || '
+```
+
+or 
+
+```sql
+' AND strpos((SELECT CASE WHEN 1=1 THEN pg_sleep(10) ELSE pg_sleep(0) END)::text, '1') > 0--
+```
+
+## 3. Payload Breakdown
+
+- **SELECT CASE**: Initiates the conditional logic.
+
+- **WHEN 1=1**: The condition being tested (always true in this proof-of-concept).
+
+- **THEN pg_sleep(10)**: Tells the PostgreSQL engine to pause the execution for 10 seconds if the condition is met.
+
+- **ELSE pg_sleep(0)**: No delay if the condition is false.
+
+- **::text**: Casts the result to text to satisfy the surrounding function requirements.
+
+- **--**: Comments out the rest of the original query.
+
+## Results
+
+As shown in the Burp Suite Repeater logs, the response time jumped to 10,103 ms. This confirms that the server-side code is vulnerable to time-based blind SQL injection.
+
+## Key Takeaways
+
+ - Patience is Key: Blind SQLi requires measuring server response times accurately.
+
+ - Inference Power: While we only triggered a sleep in this lab, this technique can be used to exfiltrate data character-by-character by asking the database: "If the first letter of the password is 'A', sleep for 10 seconds."
+
+ - PostgreSQL Specifics: Understanding the pg_sleep() function and type casting (::text) is essential for successful exploitation on this platform.
+
+## Blind SQL Injection with Time Delays & Information Retrieval - Lab Solution
+
+This lab details the exploitation of a sophisticated Blind SQL Injection vulnerability in a web application's tracking cookie. The objective was to exfiltrate the administrator password from a PostgreSQL database by measuring time delays.
+
+## Objective
+Retrieve the administrative password by triggering conditional time delays, as the application does not return any visual feedback or error messages in the HTTP response.
+
+## Tools Used
+
+ - Burp Suite Professional/Community (Repeater & Intruder)
+
+ - PostgreSQL Syntax (pg_sleep, CASE, SUBSTRING)
+
+## Vulnerability Assessment
+
+The application utilizes a TrackingId cookie for analytics. Preliminary testing confirmed that the application executes SQL queries synchronously, making it susceptible to Time-Based Blind SQL Injection.
+
+ - Detection: A baseline request took ~60ms.
+
+ - Verification: Injecting a sleep command confirmed the vulnerability:
+
+    ```sql
+    TrackingId=xyz' AND (SELECT CASE WHEN (1=1) THEN pg_sleep(10) ELSE pg_sleep(0) END)::text=' '--
+    ```
+
+ - Result: The server responded in exactly 10,103ms.
+
+## Exploitation Strategy (The Exfiltration)
+
+## 1. Logic Construction
+
+To retrieve the password, I used a conditional statement that triggers a 5-second delay ONLY if a specific character at a specific position matches my guess.
+
+Core Logic:
+
+```sql
+' AND (SELECT CASE WHEN (substring((SELECT password FROM users WHERE username='administrator'),1,1)='a') THEN pg_sleep(5) ELSE pg_sleep(0) END)::text=' '--
+```
+
+## 2. Automation with Burp Intruder
+
+Exfiltrating a long password manually is inefficient. I automated the process using the Intruder module with a Cluster Bomb attack:
+
+ - Payload 1 (Position): Iterated from 1 to 20 (Targeting each character of the password).
+
+ - Payload 2 (Character): A list of lowercase letters and numbers (a-z, 0-9).
+
+ - Resource Pool: Set to 1 concurrent request to ensure timing accuracy and prevent overlaps.
+
+## 3. Data Extraction
+
+By monitoring the "Response Received" column in Intruder:
+
+ - Standard attempts: ~50ms - 150ms.
+
+ - Successful matches: ~5,000ms+ (5 seconds).
+
+By recording the character for each position that triggered the delay, the full password was reconstructed.
+
+## Final Steps
+
+ - Captured the full password through the time-delay feedback loop.
+
+ - Logged into the administrator account successfully.
+
+ - Solved the lab.
+
+## Key Learnings for Red Teaming
+
+ - Stealth vs. Speed: Time-based attacks are stealthy as they don't trigger error logs, but they are slow. Optimizing sleep times (e.g., using 2-3 seconds instead of 10) is crucial in real engagements.
+
+ - Type Casting: PostgreSQL requires strict type handling. Casting the **CASE** result to **::text** was necessary to satisfy the AND operator's boolean requirement.
+
+ - Resource Management: Running multiple threads in a time-based attack can lead to "False Positives" because the server might lag due to load, not the injection.
+
+
 
