@@ -353,3 +353,78 @@ Cookie: TrackingId=tStayyFx4UAgNeIF' AND (SELECT SUBSTRING(password,2,1) FROM us
 After iterating through all characters, I successfully reconstructed the administrator password and gained full access to the account. This lab demonstrates how even subtle differences in server responses can lead to full database compromise.
 
 
+## PortSwigger Lab: Blind SQL Injection with Conditional Errors
+
+## Objective
+
+The goal of this lab is to exploit a Blind SQL Injection vulnerability to exfiltrate the administrator password from the database. The application uses a tracking cookie and performs a SQL query containing its value, but it does not return the results or change its UI based on the query's success.
+
+## Discovery & Analysis
+
+ - Vulnerability Type: Error-Based Blind SQL Injection.
+
+ - Observation: * Adding a single quote (') to the TrackingId cookie results in a 500 Internal Server Error, indicating a syntax break.
+
+   - Standard boolean payloads like OR 1=1 always return a 200 OK, regardless of the query's logic.
+
+ - Conclusion: Since the application doesn't show data or different messages for "True/False" conditions, we must force the database to throw a runtime error (like division by zero) to distinguish between a correct and incorrect guess.
+
+## Exploitation Strategy
+
+We use a CASE statement to create a "conditional trigger." If our guess is correct, the database executes an impossible operation, triggering a 500 error.
+
+## SQL Payload Structure (Oracle):
+
+```sql
+' || (SELECT CASE WHEN (CONDITION) THEN TO_CHAR(1/0) ELSE '' END FROM dual) || '
+```
+
+ - TO_CHAR(1/0): Forces a "division by zero" error in Oracle, resulting in a 500 status code.
+
+ - CASE WHEN: Acts as our "If-Then" logic.
+
+    - Condition True: Triggers the error (500).
+
+    - Condition False: Returns an empty string (200).
+
+## Step-by-Step Execution
+
+## 1. Determining Password Length
+
+I used the LENGTH function to find out how many characters the password has:
+TrackingId=xyz' || (SELECT CASE WHEN (LENGTH(password)>19) THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE username='administrator') || '
+
+## 2. Character-by-Character Exfiltration (Brute Force)
+
+I utilized Burp Suite Intruder to automate the process.
+
+## Payload Template:
+
+```sql
+' || (SELECT CASE WHEN (SUBSTR(password,§1§,1)='§a§') THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE username='administrator') || '
+```
+
+  - Attack Type: Cluster Bomb (or Sniper for targeted positions).
+
+  - Payload Set 1: Numbers (1 to 20) for character position.
+
+  - Payload Set 2: Simple list (a-z, 0-9) for characters.
+
+## 3. Reconstructing the Password
+
+By filtering the Intruder results for Status Code: 500, I successfully extracted the password:
+```
+jxvruf3bbgluaby6rp9o
+```
+
+
+## Key Takeaways & Red Team Insights
+
+ - Noise Reduction: Brute-forcing every character generates hundreds of 500 errors in the server logs. In a real Red Team engagement, this is very "noisy" and easily detectable by a SOC (Security Operations Center).
+
+ - Efficiency: Using an ASCII-based Binary Search (using > or < operators) would be much faster, reducing the number of requests per character from ~36 to only ~7.
+
+ - Precision: The trailing ' at the end of the payload is crucial to balance the SQL syntax and avoid generic syntax errors that could mislead the results.
+
+
+
