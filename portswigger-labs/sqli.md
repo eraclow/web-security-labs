@@ -463,19 +463,20 @@ To exfiltrate data, I used the CAST function to force a data type mismatch. By t
 
 ## 3. Payload Breakdown
 
- - **':** Closes the original string in the tracking query.
+ - **'** : Closes the original string in the tracking query.
 
- - **AND 1=CAST(...)**: Forces the DB to evaluate the CAST operation.
+ - **AND 1=CAST(...)** : Forces the DB to evaluate the CAST operation.
 
- - **(SELECT password FROM users LIMIT 1)**: Fetches the password of the first user in the table.
+ - **(SELECT password FROM users LIMIT 1)** : Fetches the password of the first user in the table.
 
- - **AS INT**: Attempts to convert the retrieved password into an integer.
+ - **AS INT** : Attempts to convert the retrieved password into an integer.
 
- - **--**:Comments out the rest of the original SQL query to prevent syntax errors.
+ - **--** :Comments out the rest of the original SQL query to prevent syntax errors.
 
 ## Results
 
 Upon sending the request, the server responded with a detailed error:
+
 ```
 ERROR: invalid input syntax for integer: "THE_EXTRACTED_PASSWORD"
 ```
@@ -535,17 +536,17 @@ or
 
 ## 3. Payload Breakdown
 
-- **SELECT CASE**: Initiates the conditional logic.
+- **SELECT CASE** : Initiates the conditional logic.
 
-- **WHEN 1=1**: The condition being tested (always true in this proof-of-concept).
+- **WHEN 1=1** : The condition being tested (always true in this proof-of-concept).
 
-- **THEN pg_sleep(10)**: Tells the PostgreSQL engine to pause the execution for 10 seconds if the condition is met.
+- **THEN pg_sleep(10)** : Tells the PostgreSQL engine to pause the execution for 10 seconds if the condition is met.
 
-- **ELSE pg_sleep(0)**: No delay if the condition is false.
+- **ELSE pg_sleep(0)** : No delay if the condition is false.
 
-- **::text**: Casts the result to text to satisfy the surrounding function requirements.
+- **::text** : Casts the result to text to satisfy the surrounding function requirements.
 
-- **--**: Comments out the rest of the original query.
+- **--** : Comments out the rest of the original query.
 
 ## Results
 
